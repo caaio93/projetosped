@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { cn, formatarData, formatarDataHora, formatarTamanhoArquivo } from '@/lib/utils';
 import { useAppStore } from '@/lib/store';
+import { useHydration } from '@/lib/useHydration';
 import { Button, Input, Avatar, Badge, Modal, MarkdownEditor } from '@/components/ui';
 import type { Tarefa, StatusTarefa, Anexo, PontoUserStory } from '@/types';
 
@@ -40,23 +41,9 @@ const PONTOS_CATEGORIAS = [
 export default function UserStoryDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const hydrated = useHydration();
   const projetoId = params.id as string;
   const userStoryId = params.userstoryId as string;
-
-  const {
-    getUserStoryById,
-    atualizarUserStory,
-    getTarefasPorUserStory,
-    adicionarTarefa,
-    atualizarTarefa,
-    excluirTarefa,
-    usuarioAtual,
-    getProjetoAtual,
-  } = useAppStore();
-
-  const userStory = getUserStoryById(userStoryId);
-  const projeto = getProjetoAtual();
-  const tarefas = getTarefasPorUserStory(userStoryId);
 
   const [abaAtiva, setAbaAtiva] = useState<'comentarios' | 'atividades'>('comentarios');
   const [novoComentario, setNovoComentario] = useState('');
@@ -64,7 +51,38 @@ export default function UserStoryDetailPage() {
   const [mostrarFormTarefa, setMostrarFormTarefa] = useState(false);
   const [viewAnexos, setViewAnexos] = useState<'grid' | 'list'>('list');
   const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const [modalHistoricoAberto, setModalHistoricoAberto] = useState(false);
+  const [modalExcluirAberto, setModalExcluirAberto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const {
+    getUserStoryById,
+    atualizarUserStory,
+    excluirUserStory,
+    getTarefasPorUserStory,
+    adicionarTarefa,
+    atualizarTarefa,
+    excluirTarefa,
+    usuarioAtual,
+    getProjetoAtual,
+    getAtividadesPorProjeto,
+  } = useAppStore();
+
+  // Renderizar loading antes de acessar dados do store
+  if (!hydrated) {
+    return (
+      <div className="flex items-center justify-center h-full bg-white">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500 mx-auto mb-4"></div>
+          <p className="text-gray-500">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const userStory = getUserStoryById(userStoryId);
+  const projeto = getProjetoAtual();
+  const tarefas = getTarefasPorUserStory(userStoryId);
 
   if (!userStory) {
     return (
@@ -137,17 +155,50 @@ export default function UserStoryDetailPage() {
     setNovoComentario('');
   };
 
+  const handleToggleObservador = () => {
+    const observadores = userStory.observadores || [];
+    const userId = usuarioAtual?.id || '';
+    
+    if (observadores.includes(userId)) {
+      atualizarUserStory(userStoryId, { 
+        observadores: observadores.filter(id => id !== userId) 
+      });
+    } else {
+      atualizarUserStory(userStoryId, { 
+        observadores: [...observadores, userId] 
+      });
+    }
+  };
+
+  const handleCopiarLink = () => {
+    const url = window.location.href;
+    navigator.clipboard.writeText(url).then(() => {
+      alert('Link copiado para a área de transferência!');
+    });
+  };
+
+  const handleExcluir = () => {
+    excluirUserStory(userStoryId);
+    router.push(`/projeto/${projetoId}/backlog`);
+  };
+
+  const isObservando = (userStory.observadores || []).includes(usuarioAtual?.id || '');
+  const atividadesUserStory = getAtividadesPorProjeto(projetoId).filter(
+    a => a.entidadeId === userStoryId || 
+    (a.entidadeTipo === 'tarefa' && tarefas.some(t => t.id === a.entidadeId))
+  );
+
   const statusAtual = STATUS_OPTIONS.find((s) => s.value === userStory.status);
 
   return (
-    <div className="h-full flex flex-col bg-white">
+    <div className="h-full flex flex-col bg-white" suppressHydrationWarning>
       {/* Header */}
       <div className="border-b px-6 py-4">
         <div className="flex items-center gap-4">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-primary-500 font-mono text-lg">#{userStory.ref}</span>
-              <span className="text-xl font-semibold text-gray-900">{userStory.titulo}</span>
+              <span className="text-primary-500 font-mono text-lg" suppressHydrationWarning>#{userStory.ref}</span>
+              <span className="text-xl font-semibold text-gray-900" suppressHydrationWarning>{userStory.titulo}</span>
             </div>
             <div className="flex items-center gap-2 text-sm text-gray-500">
               <span>USER STORY</span>
@@ -188,8 +239,8 @@ export default function UserStoryDetailPage() {
         {/* Criado por */}
         <div className="flex items-center gap-2 mt-3 text-sm text-gray-500">
           <span>Created by</span>
-          <span className="text-primary-500 font-medium">{usuarioAtual?.nomeCompleto || 'Usuário'}</span>
-          <span>{formatarDataHora(userStory.dataCriacao)}</span>
+          <span className="text-primary-500 font-medium" suppressHydrationWarning>{usuarioAtual?.nomeCompleto || 'Usuário'}</span>
+          <span suppressHydrationWarning>{formatarDataHora(userStory.dataCriacao)}</span>
           <Avatar nome={usuarioAtual?.nomeCompleto || 'U'} size="sm" />
         </div>
       </div>
@@ -474,21 +525,95 @@ export default function UserStoryDetailPage() {
 
           {/* Ações */}
           <div className="flex gap-2">
-            <button className="p-2 rounded hover:bg-gray-200" title="Bloquear">
-              <Eye className="w-4 h-4 text-gray-500" />
+            <button 
+              className={cn(
+                "p-2 rounded hover:bg-gray-200",
+                isObservando && "bg-primary-100"
+              )}
+              title={isObservando ? "Parar de observar" : "Observar"}
+              onClick={handleToggleObservador}
+            >
+              <Eye className={cn("w-4 h-4", isObservando ? "text-primary-500" : "text-gray-500")} />
             </button>
-            <button className="p-2 rounded hover:bg-gray-200" title="Copiar">
+            <button 
+              className="p-2 rounded hover:bg-gray-200" 
+              title="Copiar link"
+              onClick={handleCopiarLink}
+            >
               <Paperclip className="w-4 h-4 text-gray-500" />
             </button>
-            <button className="p-2 rounded hover:bg-gray-200" title="Histórico">
+            <button 
+              className="p-2 rounded hover:bg-gray-200" 
+              title="Histórico"
+              onClick={() => setModalHistoricoAberto(true)}
+            >
               <History className="w-4 h-4 text-gray-500" />
             </button>
-            <button className="p-2 rounded hover:bg-gray-200" title="Excluir">
-              <Trash2 className="w-4 h-4 text-gray-500" />
+            <button 
+              className="p-2 rounded hover:bg-gray-200 hover:bg-red-50" 
+              title="Excluir"
+              onClick={() => setModalExcluirAberto(true)}
+            >
+              <Trash2 className="w-4 h-4 text-gray-500 hover:text-red-500" />
             </button>
           </div>
         </div>
       </div>
+
+      {/* Modal Histórico */}
+      <Modal
+        isOpen={modalHistoricoAberto}
+        onClose={() => setModalHistoricoAberto(false)}
+        title="Histórico de Atividades"
+        size="lg"
+      >
+        <div className="max-h-96 overflow-auto">
+          {atividadesUserStory.length === 0 ? (
+            <p className="text-center text-gray-500 py-8">Nenhuma atividade registrada</p>
+          ) : (
+            <div className="space-y-3">
+              {atividadesUserStory.map((atividade) => (
+                <div key={atividade.id} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-primary-600">{atividade.usuarioNome}</span>
+                      <span className="text-gray-600 text-sm" dangerouslySetInnerHTML={{ __html: atividade.descricao }} />
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1" suppressHydrationWarning>
+                      {formatarDataHora(atividade.dataCriacao)}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      {/* Modal Confirmar Exclusão */}
+      <Modal
+        isOpen={modalExcluirAberto}
+        onClose={() => setModalExcluirAberto(false)}
+        title="Excluir User Story"
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setModalExcluirAberto(false)}>
+              Cancelar
+            </Button>
+            <Button variant="danger" onClick={handleExcluir}>
+              Excluir
+            </Button>
+          </>
+        }
+      >
+        <p className="text-gray-600">
+          Tem certeza que deseja excluir a User Story <strong>#{userStory.ref} {userStory.titulo}</strong>?
+        </p>
+        <p className="text-sm text-gray-500 mt-2">
+          Esta ação não pode ser desfeita. Todas as tarefas associadas permanecerão no sistema.
+        </p>
+      </Modal>
     </div>
   );
 }

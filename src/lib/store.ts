@@ -17,6 +17,8 @@ import type {
   TipoIssue,
   Severidade,
   Prioridade,
+  Atividade,
+  TipoAtividade,
 } from '@/types';
 
 // ==========================================
@@ -124,6 +126,11 @@ interface AppState {
   tags: Tag[];
   adicionarTag: (tag: Omit<Tag, 'id'>) => string;
   
+  // Atividades (Timeline)
+  atividades: Atividade[];
+  registrarAtividade: (atividade: Omit<Atividade, 'id' | 'dataCriacao'>) => void;
+  getAtividadesPorProjeto: (projetoId: string) => Atividade[];
+  
   // Contadores de referência
   contadorRef: Record<string, number>;
   proximoRef: (projetoId: string) => number;
@@ -222,6 +229,24 @@ export const useAppStore = create<AppState>()(
         set((state) => ({
           userStories: [...state.userStories, novaUserStory],
         }));
+        
+        // Registrar atividade
+        const usuario = get().usuarioAtual;
+        const sprint = userStory.sprint ? get().sprints.find(s => s.id === userStory.sprint) : null;
+        get().registrarAtividade({
+          tipo: 'criar_user_story',
+          projeto: userStory.projeto,
+          usuario: usuario?.id || '',
+          usuarioNome: usuario?.nomeCompleto || 'Usuário',
+          entidadeId: id,
+          entidadeTipo: 'user_story',
+          entidadeRef: ref,
+          entidadeTitulo: userStory.titulo,
+          descricao: sprint 
+            ? `has added the user story <strong>#${ref} ${userStory.titulo}</strong> to <strong>${sprint.nome}</strong>`
+            : `has created a new user story <strong>#${ref} ${userStory.titulo}</strong>`,
+        });
+        
         return id;
       },
       
@@ -273,15 +298,58 @@ export const useAppStore = create<AppState>()(
         set((state) => ({
           tarefas: [...state.tarefas, novaTarefa],
         }));
+        
+        // Registrar atividade
+        const usuario = get().usuarioAtual;
+        const userStory = tarefa.userStory ? get().userStories.find(us => us.id === tarefa.userStory) : null;
+        get().registrarAtividade({
+          tipo: 'criar_tarefa',
+          projeto: tarefa.projeto,
+          usuario: usuario?.id || '',
+          usuarioNome: usuario?.nomeCompleto || 'Usuário',
+          entidadeId: id,
+          entidadeTipo: 'tarefa',
+          entidadeRef: ref,
+          entidadeTitulo: tarefa.titulo,
+          descricao: userStory 
+            ? `has created the task <strong>#${ref} ${tarefa.titulo}</strong> for user story <strong>#${userStory.ref} ${userStory.titulo}</strong>`
+            : `has created a new task <strong>#${ref} ${tarefa.titulo}</strong>`,
+        });
+        
         return id;
       },
       
       atualizarTarefa: (id, dados) => {
+        const tarefaAnterior = get().tarefas.find(t => t.id === id);
         set((state) => ({
           tarefas: state.tarefas.map((t) =>
             t.id === id ? { ...t, ...dados, dataModificacao: new Date() } : t
           ),
         }));
+        
+        // Registrar atividade de mudança de status
+        if (dados.status && tarefaAnterior && dados.status !== tarefaAnterior.status) {
+          const usuario = get().usuarioAtual;
+          const userStory = tarefaAnterior.userStory ? get().userStories.find(us => us.id === tarefaAnterior.userStory) : null;
+          get().registrarAtividade({
+            tipo: 'atualizar_status_tarefa',
+            projeto: tarefaAnterior.projeto,
+            usuario: usuario?.id || '',
+            usuarioNome: usuario?.nomeCompleto || 'Usuário',
+            entidadeId: id,
+            entidadeTipo: 'tarefa',
+            entidadeRef: tarefaAnterior.ref,
+            entidadeTitulo: tarefaAnterior.titulo,
+            descricao: userStory
+              ? `has updated the attribute "Status" of the task <strong>#${tarefaAnterior.ref} ${tarefaAnterior.titulo}</strong> which belongs to the user story <strong>#${userStory.ref} ${userStory.titulo}</strong> to <strong>${dados.status}</strong>`
+              : `has updated the status of task <strong>#${tarefaAnterior.ref} ${tarefaAnterior.titulo}</strong> to <strong>${dados.status}</strong>`,
+            detalhes: {
+              campo: 'Status',
+              valorAntigo: tarefaAnterior.status,
+              valorNovo: dados.status,
+            },
+          });
+        }
       },
       
       excluirTarefa: (id) => {
@@ -335,6 +403,21 @@ export const useAppStore = create<AppState>()(
         set((state) => ({
           sprints: [...state.sprints, novoSprint],
         }));
+        
+        // Registrar atividade
+        const usuario = get().usuarioAtual;
+        const projeto = get().projetos.find(p => p.id === sprint.projeto);
+        get().registrarAtividade({
+          tipo: 'criar_sprint',
+          projeto: sprint.projeto,
+          usuario: usuario?.id || '',
+          usuarioNome: usuario?.nomeCompleto || 'Usuário',
+          entidadeId: id,
+          entidadeTipo: 'sprint',
+          entidadeTitulo: sprint.nome,
+          descricao: `has created a new sprint <strong>${sprint.nome}</strong> in <strong>${projeto?.nome || 'Projeto'}</strong>`,
+        });
+        
         return id;
       },
       
@@ -549,6 +632,27 @@ export const useAppStore = create<AppState>()(
         });
         return proximo;
       },
+      
+      // Atividades (Timeline)
+      atividades: [],
+      
+      registrarAtividade: (atividade) => {
+        const id = uuidv4();
+        const novaAtividade: Atividade = {
+          ...atividade,
+          id,
+          dataCriacao: new Date(),
+        };
+        set((state) => ({
+          atividades: [novaAtividade, ...state.atividades],
+        }));
+      },
+      
+      getAtividadesPorProjeto: (projetoId) => {
+        return get().atividades
+          .filter((a) => a.projeto === projetoId)
+          .sort((a, b) => new Date(b.dataCriacao).getTime() - new Date(a.dataCriacao).getTime());
+      },
     }),
     {
       name: 'taiga-scrum-storage',
@@ -564,6 +668,7 @@ export const useAppStore = create<AppState>()(
         contadorRef: state.contadorRef,
         usuarioAtual: state.usuarioAtual,
         projetoAtual: state.projetoAtual,
+        atividades: state.atividades,
       }),
     }
   )

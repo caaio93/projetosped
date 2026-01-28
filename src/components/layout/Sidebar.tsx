@@ -16,9 +16,11 @@ import {
   ChevronDown,
   ChevronUp,
   FolderKanban,
+  Activity,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/lib/store';
+import { useHydration } from '@/lib/useHydration';
 
 interface SidebarProps {
   projetoId?: string;
@@ -26,12 +28,13 @@ interface SidebarProps {
 
 export function Sidebar({ projetoId }: SidebarProps) {
   const pathname = usePathname();
+  const hydrated = useHydration();
   const [collapsed, setCollapsed] = useState(false);
   const [scrumExpanded, setScrumExpanded] = useState(true);
   
   const { getProjetoAtual, getSprintsPorProjeto } = useAppStore();
-  const projeto = getProjetoAtual();
-  const sprints = projetoId ? getSprintsPorProjeto(projetoId) : [];
+  const projeto = hydrated ? getProjetoAtual() : null;
+  const sprints = hydrated && projetoId ? getSprintsPorProjeto(projetoId) : [];
 
   const menuItems = [
     {
@@ -62,6 +65,13 @@ export function Sidebar({ projetoId }: SidebarProps) {
     },
   ];
 
+  const timelineItem = {
+    id: 'timeline',
+    label: 'Timeline',
+    icon: Activity,
+    href: `/projeto/${projetoId}/timeline`,
+  };
+
   const bottomItems = [
     { id: 'search', label: 'Buscar', icon: Search, href: `/projeto/${projetoId}/buscar` },
     { id: 'team', label: 'Equipe', icon: Users, href: `/projeto/${projetoId}/equipe` },
@@ -77,7 +87,7 @@ export function Sidebar({ projetoId }: SidebarProps) {
     >
       {/* Logo / Nome do Projeto */}
       <Link
-        href={projetoId ? `/projeto/${projetoId}` : '/'}
+        href={projetoId ? `/projeto/${projetoId}/timeline` : '/'}
         className="flex items-center gap-3 px-4 py-4 border-b border-sidebar-light hover:bg-sidebar-light transition-colors"
       >
         <div className="w-8 h-8 rounded-lg bg-primary-500 flex items-center justify-center flex-shrink-0">
@@ -147,6 +157,19 @@ export function Sidebar({ projetoId }: SidebarProps) {
             )}
           </div>
         ))}
+
+        {/* Timeline */}
+        <Link
+          href={timelineItem.href}
+          className={cn(
+            'flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-sidebar-light hover:text-white transition-colors',
+            pathname === timelineItem.href && 'bg-primary-500 text-white',
+            collapsed && 'justify-center'
+          )}
+        >
+          <timelineItem.icon className="w-5 h-5 flex-shrink-0" />
+          {!collapsed && <span>{timelineItem.label}</span>}
+        </Link>
       </nav>
 
       {/* Menu Inferior */}

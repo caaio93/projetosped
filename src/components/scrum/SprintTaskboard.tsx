@@ -50,6 +50,7 @@ export function SprintTaskboard({ sprintId, projetoId }: SprintTaskboardProps) {
   const [tarefaEditando, setTarefaEditando] = useState<Tarefa | null>(null);
   const [tarefaAtribuindo, setTarefaAtribuindo] = useState<Tarefa | null>(null);
   const [tarefaDetalhes, setTarefaDetalhes] = useState<Tarefa | null>(null);
+  const [modalIssueAberto, setModalIssueAberto] = useState(false);
 
   const {
     sprints,
@@ -59,8 +60,33 @@ export function SprintTaskboard({ sprintId, projetoId }: SprintTaskboardProps) {
     getTarefasPorUserStory,
     atualizarTarefa,
     adicionarTarefa,
+    adicionarIssue,
     usuarioAtual,
   } = useAppStore();
+
+  // Sensores para drag and drop - DEVE estar antes de qualquer return condicional
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  // Renderizar loading antes de acessar dados do store
+  if (!hydrated) {
+    return (
+      <div className="flex items-center justify-center h-full bg-white">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500 mx-auto mb-4"></div>
+          <p className="text-gray-500">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
 
   const sprint = sprints.find((s) => s.id === sprintId);
   const userStories = getUserStoriesPorSprint(sprintId);
@@ -77,18 +103,6 @@ export function SprintTaskboard({ sprintId, projetoId }: SprintTaskboardProps) {
   const totalTarefas = todasTarefas.length;
   // Percentual baseado em tarefas fechadas (mais preciso para acompanhamento diário)
   const percentual = totalTarefas > 0 ? Math.round((tarefasFechadas / totalTarefas) * 100) : 0;
-
-  // Sensores para drag and drop
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
 
   const handleDragStart = (event: DragStartEvent) => {
     const tarefa = todasTarefas.find((t) => t.id === event.active.id);
@@ -269,6 +283,7 @@ export function SprintTaskboard({ sprintId, projetoId }: SprintTaskboardProps) {
                 onEditar={handleEditarTarefa}
                 onAtribuir={handleAtribuirTarefa}
                 onVerDetalhes={handleVerDetalhes}
+                projetoId={projetoId}
               />
             ))}
 
@@ -316,7 +331,11 @@ export function SprintTaskboard({ sprintId, projetoId }: SprintTaskboardProps) {
               Tags
             </label>
             <div className="flex-1" />
-            <button className="p-1 text-gray-400 hover:text-primary-500">
+            <button 
+              onClick={() => setModalIssueAberto(true)}
+              className="p-1 text-gray-400 hover:text-primary-500"
+              title="Adicionar Issue"
+            >
               <Plus className="w-4 h-4" />
             </button>
             <button className="p-1 text-gray-400 hover:text-gray-600">
@@ -367,6 +386,14 @@ export function SprintTaskboard({ sprintId, projetoId }: SprintTaskboardProps) {
           }
         }}
       />
+
+      {/* Modal Nova Issue do Sprint */}
+      <NovaIssueSprintModal
+        isOpen={modalIssueAberto}
+        onClose={() => setModalIssueAberto(false)}
+        sprintId={sprintId}
+        projetoId={projetoId}
+      />
     </div>
   );
 }
@@ -383,9 +410,10 @@ interface UserStoryRowProps {
   onEditar: (tarefa: Tarefa) => void;
   onAtribuir: (tarefa: Tarefa) => void;
   onVerDetalhes: (tarefa: Tarefa) => void;
+  projetoId: string;
 }
 
-function UserStoryRow({ userStory, tarefas, colunas, onNovaTarefa, zoomDetalhado, onEditar, onAtribuir, onVerDetalhes }: UserStoryRowProps) {
+function UserStoryRow({ userStory, tarefas, colunas, onNovaTarefa, zoomDetalhado, onEditar, onAtribuir, onVerDetalhes, projetoId }: UserStoryRowProps) {
   const [expandido, setExpandido] = useState(true);
 
   return (
@@ -403,9 +431,12 @@ function UserStoryRow({ userStory, tarefas, colunas, onNovaTarefa, zoomDetalhado
           <div className="flex-1">
             <div className="flex items-center gap-2">
               <span className="text-xs text-gray-500">#{userStory.ref}</span>
-              <span className="text-sm font-medium text-gray-800 truncate">
+              <a 
+                href={`/projeto/${projetoId}/userstory/${userStory.id}`}
+                className="text-sm font-medium text-gray-800 truncate hover:text-primary-500 hover:underline cursor-pointer"
+              >
                 {userStory.titulo}
-              </span>
+              </a>
             </div>
             <div className="flex items-center gap-2 mt-1">
               <span className="text-xs px-2 py-0.5 bg-primary-100 text-primary-700 rounded">
@@ -988,6 +1019,248 @@ function DetalhesTarefaModal({ isOpen, onClose, tarefa, onEditar }: DetalhesTare
           </div>
         </div>
       </div>
+    </Modal>
+  );
+}
+
+// ==========================================
+// MODAL NOVA ISSUE DO SPRINT
+// ==========================================
+interface NovaIssueSprintModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  sprintId: string;
+  projetoId: string;
+}
+
+function NovaIssueSprintModal({ isOpen, onClose, sprintId, projetoId }: NovaIssueSprintModalProps) {
+  const [abaAtiva, setAbaAtiva] = useState<'nova' | 'existente'>('nova');
+  const [titulo, setTitulo] = useState('');
+  const [descricao, setDescricao] = useState('');
+  const [tipo, setTipo] = useState<'bug' | 'melhoria' | 'pergunta' | 'suporte'>('bug');
+  const [prioridade, setPrioridade] = useState<'baixa' | 'normal' | 'alta'>('normal');
+  const [severidade, setSeveridade] = useState<'wishlist' | 'minor' | 'normal' | 'important' | 'critical'>('normal');
+  const [issuesSelecionadas, setIssuesSelecionadas] = useState<string[]>([]);
+  const [filtroIssue, setFiltroIssue] = useState('');
+
+  const { adicionarIssue, getIssuesPorProjeto, usuarioAtual } = useAppStore();
+  
+  const issuesDisponiveis = getIssuesPorProjeto(projetoId).filter(
+    (issue) => issue.titulo.toLowerCase().includes(filtroIssue.toLowerCase())
+  );
+
+  const handleSalvar = () => {
+    if (abaAtiva === 'nova') {
+      if (!titulo.trim()) return;
+
+      adicionarIssue({
+        titulo: titulo.trim(),
+        descricao,
+        tipo,
+        status: 'novo',
+        prioridade,
+        severidade,
+        projeto: projetoId,
+        tags: [],
+        anexos: [],
+        atribuido: undefined,
+        observadores: [],
+        criadoPor: usuarioAtual?.id || '',
+        ordem: 0,
+        comentarios: [],
+      });
+
+      setTitulo('');
+      setDescricao('');
+      setTipo('bug');
+      setPrioridade('normal');
+      setSeveridade('normal');
+    } else {
+      // Por enquanto, apenas fecha o modal - funcionalidade de vincular pode ser implementada futuramente
+      // quando o tipo Issue suportar a propriedade sprint
+      setIssuesSelecionadas([]);
+    }
+    onClose();
+  };
+
+  const toggleIssueSelecionada = (issueId: string) => {
+    setIssuesSelecionadas((prev) =>
+      prev.includes(issueId) ? prev.filter((id) => id !== issueId) : [...prev, issueId]
+    );
+  };
+
+  const canSave = abaAtiva === 'nova' ? titulo.trim() : issuesSelecionadas.length > 0;
+
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Issue do Sprint"
+      size="md"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button variant="primary" onClick={handleSalvar} disabled={!canSave}>
+            {abaAtiva === 'nova' ? 'Criar Issue' : `Vincular ${issuesSelecionadas.length} Issue(s)`}
+          </Button>
+        </>
+      }
+    >
+      {/* Abas */}
+      <div className="flex border-b mb-4">
+        <button
+          onClick={() => setAbaAtiva('nova')}
+          className={cn(
+            'px-4 py-2 text-sm font-medium border-b-2 transition-colors',
+            abaAtiva === 'nova'
+              ? 'border-primary-500 text-primary-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          )}
+        >
+          Nova Issue
+        </button>
+        <button
+          onClick={() => setAbaAtiva('existente')}
+          className={cn(
+            'px-4 py-2 text-sm font-medium border-b-2 transition-colors',
+            abaAtiva === 'existente'
+              ? 'border-primary-500 text-primary-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          )}
+        >
+          Vincular Existente
+        </button>
+      </div>
+
+      {abaAtiva === 'nova' ? (
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Título *</label>
+            <Input
+              value={titulo}
+              onChange={(e) => setTitulo(e.target.value)}
+              placeholder="Título da issue..."
+              autoFocus
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
+            <Textarea
+              value={descricao}
+              onChange={(e) => setDescricao(e.target.value)}
+              placeholder="Descreva a issue..."
+              rows={4}
+            />
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
+              <select
+                value={tipo}
+                onChange={(e) => setTipo(e.target.value as typeof tipo)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                <option value="bug">Bug</option>
+                <option value="melhoria">Melhoria</option>
+                <option value="pergunta">Pergunta</option>
+                <option value="suporte">Suporte</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Prioridade</label>
+              <select
+                value={prioridade}
+                onChange={(e) => setPrioridade(e.target.value as typeof prioridade)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                <option value="baixa">Baixa</option>
+                <option value="normal">Normal</option>
+                <option value="alta">Alta</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Severidade</label>
+              <select
+                value={severidade}
+                onChange={(e) => setSeveridade(e.target.value as typeof severidade)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                <option value="wishlist">Desejável</option>
+                <option value="minor">Menor</option>
+                <option value="normal">Normal</option>
+                <option value="important">Importante</option>
+                <option value="critical">Crítico</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div>
+            <Input
+              value={filtroIssue}
+              onChange={(e) => setFiltroIssue(e.target.value)}
+              placeholder="Buscar issues..."
+            />
+          </div>
+
+          <div className="max-h-64 overflow-auto border rounded-lg">
+            {issuesDisponiveis.length === 0 ? (
+              <div className="p-4 text-center text-gray-500">
+                Nenhuma issue disponível para vincular
+              </div>
+            ) : (
+              issuesDisponiveis.map((issue) => (
+                <div
+                  key={issue.id}
+                  onClick={() => toggleIssueSelecionada(issue.id)}
+                  className={cn(
+                    'flex items-center gap-3 p-3 border-b last:border-b-0 cursor-pointer hover:bg-gray-50',
+                    issuesSelecionadas.includes(issue.id) && 'bg-primary-50'
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={issuesSelecionadas.includes(issue.id)}
+                    onChange={() => toggleIssueSelecionada(issue.id)}
+                    className="rounded border-gray-300 text-primary-500"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500">#{issue.ref}</span>
+                      <span className="text-sm font-medium">{issue.titulo}</span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className={cn(
+                        'text-xs px-2 py-0.5 rounded',
+                        issue.tipo === 'bug' && 'bg-red-100 text-red-700',
+                        issue.tipo === 'melhoria' && 'bg-blue-100 text-blue-700',
+                        issue.tipo === 'pergunta' && 'bg-purple-100 text-purple-700',
+                        issue.tipo === 'suporte' && 'bg-gray-100 text-gray-700'
+                      )}>
+                        {issue.tipo}
+                      </span>
+                      <span className="text-xs text-gray-400">{issue.status}</span>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {issuesSelecionadas.length > 0 && (
+            <p className="text-sm text-gray-600">
+              {issuesSelecionadas.length} issue(s) selecionada(s)
+            </p>
+          )}
+        </div>
+      )}
     </Modal>
   );
 }

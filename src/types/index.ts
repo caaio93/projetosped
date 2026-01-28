@@ -352,25 +352,6 @@ export interface Comentario {
   isEditado: boolean;
 }
 
-export interface Atividade {
-  id: string;
-  tipo: TipoAtividade;
-  descricao: string;
-  usuario: string;
-  data: Date;
-  entidade: string; // ID da entidade relacionada
-  tipoEntidade: 'userStory' | 'tarefa' | 'issue' | 'wiki' | 'sprint' | 'projeto';
-  dados?: Record<string, unknown>;
-}
-
-export type TipoAtividade = 
-  | 'criacao'
-  | 'edicao'
-  | 'exclusao'
-  | 'mudancaStatus'
-  | 'atribuicao'
-  | 'comentario'
-  | 'anexo';
 
 // ==========================================
 // FILTROS E BUSCA
@@ -436,3 +417,49 @@ export const PERMISSOES = {
 } as const;
 
 export type Permissao = typeof PERMISSOES[keyof typeof PERMISSOES];
+
+// ==========================================
+// ATIVIDADE (TIMELINE)
+// ==========================================
+export type TipoAtividade = 
+  | 'criar_user_story'
+  | 'atualizar_user_story'
+  | 'mover_user_story'
+  | 'criar_tarefa'
+  | 'atualizar_tarefa'
+  | 'atualizar_status_tarefa'
+  | 'criar_issue'
+  | 'atualizar_issue'
+  | 'criar_sprint'
+  | 'atualizar_sprint'
+  | 'criar_wiki'
+  | 'atualizar_wiki'
+  | 'adicionar_comentario'
+  | 'adicionar_anexo';
+
+export interface Atividade {
+  id: string;
+  tipo: TipoAtividade;
+  projeto: string;
+  usuario: string;
+  usuarioNome: string;
+  
+  // Referências
+  entidadeId?: string;
+  entidadeTipo?: 'user_story' | 'tarefa' | 'issue' | 'sprint' | 'wiki';
+  entidadeRef?: number;
+  entidadeTitulo?: string;
+  
+  // Detalhes da ação
+  descricao: string;
+  detalhes?: {
+    campo?: string;
+    valorAntigo?: string;
+    valorNovo?: string;
+    sprintNome?: string;
+    projetoNome?: string;
+  };
+  
+  // Auditoria
+  dataCriacao: Date;
+}
