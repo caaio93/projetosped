@@ -81,6 +81,7 @@ interface AppState {
   excluirUserStory: (id: string) => void;
   getUserStoriesPorProjeto: (projetoId: string) => UserStory[];
   getUserStoriesPorSprint: (sprintId: string) => UserStory[];
+  getUserStoryById: (id: string) => UserStory | undefined;
   getBacklog: (projetoId: string) => UserStory[];
   
   // Tarefas
@@ -244,6 +245,10 @@ export const useAppStore = create<AppState>()(
       
       getUserStoriesPorSprint: (sprintId) => {
         return get().userStories.filter((us) => us.sprint === sprintId);
+      },
+
+      getUserStoryById: (id) => {
+        return get().userStories.find((us) => us.id === id);
       },
       
       getBacklog: (projetoId) => {
