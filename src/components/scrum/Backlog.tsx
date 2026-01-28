@@ -644,7 +644,7 @@ function NovaUserStoryModal({ isOpen, onClose, projetoId, categoriasPontos }: No
               <div className="flex items-center justify-between pt-2 border-t">
                 <span className="text-sm font-medium text-gray-700">total de pontos</span>
                 <span className="text-sm font-semibold">
-                  {Object.values(pontos).reduce((acc, v) => acc + (v || 0), 0) || '?'}
+                  {Object.values(pontos).reduce((acc: number, v) => acc + (v || 0), 0) || '?'}
                 </span>
               </div>
             </div>
