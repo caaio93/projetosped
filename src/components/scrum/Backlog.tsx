@@ -111,8 +111,7 @@ export function Backlog({ projetoId }: BacklogProps) {
   };
 
   const handleAbrirDetalhes = (us: UserStory) => {
-    setUserStorySelecionada(us);
-    setDetalhesAberto(true);
+    router.push(`/projeto/${projetoId}/userstory/${us.id}`);
   };
 
   const handleMoverParaSprint = (userStoryId: string, sprintId: string | null) => {
