@@ -17,6 +17,7 @@ import {
   ChevronUp,
   FolderKanban,
   Activity,
+  Triangle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/lib/store';
@@ -37,6 +38,12 @@ export function Sidebar({ projetoId }: SidebarProps) {
   const sprints = hydrated && projetoId ? getSprintsPorProjeto(projetoId) : [];
 
   const menuItems = [
+    {
+      id: 'epics',
+      label: 'Epics',
+      icon: Triangle,
+      href: `/projeto/${projetoId}/epics`,
+    },
     {
       id: 'scrum',
       label: 'Scrum',

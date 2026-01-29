@@ -130,6 +130,67 @@ export const STATUS_USER_STORY_CONFIG: Record<StatusUserStory, { label: string; 
 };
 
 // ==========================================
+// EPIC
+// ==========================================
+export interface Epic {
+  id: string;
+  ref: number;
+  titulo: string;
+  descricao: string;
+  projeto: string;
+  
+  // Status
+  status: StatusEpic;
+  
+  // Cor do Epic
+  cor: string;
+  
+  // Relacionamentos
+  userStories: string[]; // IDs das User Stories vinculadas
+  
+  // Metadados
+  tags: Tag[];
+  anexos: Anexo[];
+  atribuidos: string[]; // IDs dos usuários
+  observadores: string[]; // IDs dos usuários
+  
+  // Comentários
+  comentarios: ComentarioEpic[];
+  
+  // Auditoria
+  criadoPor: string;
+  dataCriacao: Date;
+  dataModificacao: Date;
+  
+  // Posição
+  ordem: number;
+}
+
+export interface ComentarioEpic {
+  id: string;
+  conteudo: string;
+  autor: string;
+  autorNome: string;
+  dataCriacao: Date;
+  dataModificacao?: Date;
+}
+
+export type StatusEpic = 
+  | 'novo'
+  | 'pronto'
+  | 'emProgresso'
+  | 'prontoParaTeste'
+  | 'concluido';
+
+export const STATUS_EPIC_CONFIG: Record<StatusEpic, { label: string; cor: string }> = {
+  novo: { label: 'New', cor: '#70728f' },
+  pronto: { label: 'Ready', cor: '#5cb85c' },
+  emProgresso: { label: 'In progress', cor: '#e44057' },
+  prontoParaTeste: { label: 'Ready for test', cor: '#ffc107' },
+  concluido: { label: 'Done', cor: '#a8e6cf' },
+};
+
+// ==========================================
 // TAREFA (TASK)
 // ==========================================
 export interface Tarefa {

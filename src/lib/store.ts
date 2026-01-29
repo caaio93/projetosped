@@ -19,6 +19,9 @@ import type {
   Prioridade,
   Atividade,
   TipoAtividade,
+  Epic,
+  StatusEpic,
+  ComentarioEpic,
 } from '@/types';
 
 // ==========================================
@@ -31,6 +34,31 @@ const usuarioDemo: Usuario = {
   email: 'demo@exemplo.com',
   dataCadastro: new Date(),
 };
+
+const usuariosIniciais: Usuario[] = [
+  usuarioDemo,
+  {
+    id: 'user-2',
+    nome: 'joao.silva',
+    nomeCompleto: 'João Silva',
+    email: 'joao.silva@exemplo.com',
+    dataCadastro: new Date(),
+  },
+  {
+    id: 'user-3',
+    nome: 'maria.santos',
+    nomeCompleto: 'Maria Santos',
+    email: 'maria.santos@exemplo.com',
+    dataCadastro: new Date(),
+  },
+  {
+    id: 'user-4',
+    nome: 'pedro.oliveira',
+    nomeCompleto: 'Pedro Oliveira',
+    email: 'pedro.oliveira@exemplo.com',
+    dataCadastro: new Date(),
+  },
+];
 
 const projetoDemo: Projeto = {
   id: 'proj-1',
@@ -66,6 +94,10 @@ interface AppState {
   // Usuário atual
   usuarioAtual: Usuario | null;
   setUsuarioAtual: (usuario: Usuario | null) => void;
+  
+  // Usuários do sistema
+  usuarios: Usuario[];
+  getUsuarios: () => Usuario[];
   
   // Projetos
   projetos: Projeto[];
@@ -109,6 +141,17 @@ interface AppState {
   excluirIssue: (id: string) => void;
   getIssuesPorProjeto: (projetoId: string) => Issue[];
   
+  // Epics
+  epics: Epic[];
+  adicionarEpic: (epic: Omit<Epic, 'id' | 'ref' | 'dataCriacao' | 'dataModificacao'>) => string;
+  atualizarEpic: (id: string, dados: Partial<Epic>) => void;
+  excluirEpic: (id: string) => void;
+  getEpicsPorProjeto: (projetoId: string) => Epic[];
+  getEpicById: (id: string) => Epic | undefined;
+  adicionarComentarioEpic: (epicId: string, conteudo: string) => void;
+  vincularUserStoryAoEpic: (epicId: string, userStoryId: string) => void;
+  desvincularUserStoryDoEpic: (epicId: string, userStoryId: string) => void;
+  
   // Wiki
   wikiPages: WikiPage[];
   wikiLinks: WikiLink[];
@@ -145,6 +188,10 @@ export const useAppStore = create<AppState>()(
       // Usuário atual
       usuarioAtual: usuarioDemo,
       setUsuarioAtual: (usuario) => set({ usuarioAtual: usuario }),
+      
+      // Usuários do sistema
+      usuarios: usuariosIniciais,
+      getUsuarios: () => get().usuarios,
       
       // Projetos
       projetos: [projetoDemo],
@@ -501,6 +548,100 @@ export const useAppStore = create<AppState>()(
         return get().issues.filter((i) => i.projeto === projetoId);
       },
       
+      // Epics
+      epics: [],
+      
+      adicionarEpic: (epic) => {
+        const id = uuidv4();
+        const ref = get().proximoRef(epic.projeto);
+        const novoEpic: Epic = {
+          ...epic,
+          id,
+          ref,
+          dataCriacao: new Date(),
+          dataModificacao: new Date(),
+        };
+        set((state) => ({
+          epics: [...state.epics, novoEpic],
+        }));
+        
+        // Registrar atividade
+        const usuario = get().usuarioAtual;
+        get().registrarAtividade({
+          tipo: 'criar_user_story',
+          projeto: epic.projeto,
+          usuario: usuario?.id || '',
+          usuarioNome: usuario?.nomeCompleto || 'Usuário',
+          entidadeId: id,
+          entidadeTipo: 'user_story',
+          entidadeRef: ref,
+          entidadeTitulo: epic.titulo,
+          descricao: `has created a new epic <strong>#${ref} ${epic.titulo}</strong>`,
+        });
+        
+        return id;
+      },
+      
+      atualizarEpic: (id, dados) => {
+        set((state) => ({
+          epics: state.epics.map((e) =>
+            e.id === id ? { ...e, ...dados, dataModificacao: new Date() } : e
+          ),
+        }));
+      },
+      
+      excluirEpic: (id) => {
+        set((state) => ({
+          epics: state.epics.filter((e) => e.id !== id),
+        }));
+      },
+      
+      getEpicsPorProjeto: (projetoId) => {
+        return get().epics.filter((e) => e.projeto === projetoId);
+      },
+      
+      getEpicById: (id) => {
+        return get().epics.find((e) => e.id === id);
+      },
+      
+      adicionarComentarioEpic: (epicId, conteudo) => {
+        const usuario = get().usuarioAtual;
+        const novoComentario: ComentarioEpic = {
+          id: uuidv4(),
+          conteudo,
+          autor: usuario?.id || '',
+          autorNome: usuario?.nomeCompleto || 'Usuário',
+          dataCriacao: new Date(),
+        };
+        set((state) => ({
+          epics: state.epics.map((e) =>
+            e.id === epicId
+              ? { ...e, comentarios: [...e.comentarios, novoComentario], dataModificacao: new Date() }
+              : e
+          ),
+        }));
+      },
+      
+      vincularUserStoryAoEpic: (epicId, userStoryId) => {
+        set((state) => ({
+          epics: state.epics.map((e) =>
+            e.id === epicId && !e.userStories.includes(userStoryId)
+              ? { ...e, userStories: [...e.userStories, userStoryId], dataModificacao: new Date() }
+              : e
+          ),
+        }));
+      },
+      
+      desvincularUserStoryDoEpic: (epicId, userStoryId) => {
+        set((state) => ({
+          epics: state.epics.map((e) =>
+            e.id === epicId
+              ? { ...e, userStories: e.userStories.filter((id) => id !== userStoryId), dataModificacao: new Date() }
+              : e
+          ),
+        }));
+      },
+      
       // Wiki
       wikiPages: [
         {
@@ -662,6 +803,7 @@ export const useAppStore = create<AppState>()(
         tarefas: state.tarefas,
         sprints: state.sprints,
         issues: state.issues,
+        epics: state.epics,
         wikiPages: state.wikiPages,
         wikiLinks: state.wikiLinks,
         tags: state.tags,
